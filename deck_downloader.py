@@ -9,7 +9,16 @@ from io import BytesIO
 def mm_to_px(mm, dpi=300):
     return int(mm / 25.4 * dpi)
 
-def fetch_deck(url, out_folder_images='images', out_file_list='decklist.txt', target_mm=(63,88), dpi=300):
+def get_next_image_number(folder):
+    """Find the next sequntial number based on existing image files."""
+    existing = [
+        int(re.match(r"(\d{3})_", f).group(1))
+        for f in os.listdir(folder)
+        if re.match(r"\d{3}_", f)
+    ]
+    return max(existing) + 1 if existing else 1
+
+def fetch_deck(url, out_folder_images='images', out_file_list='decklist.txt', target_mm=(63,88), dpi=600):
     # Create output folder if not exists
     os.makedirs(out_folder_images, exist_ok=True)
 
@@ -30,46 +39,58 @@ def fetch_deck(url, out_folder_images='images', out_file_list='decklist.txt', ta
 
     if not cards:
         raise RuntimeError("Could not find any cards on this deck page. Check the site structure or selectors.")
+
+    # ---- Step 2: Prepare numbering ----
+    next_num = get_next_image_number(out_folder_images)
+    width_px = mm_to_px(target_mm[0], dpi)
+    height_px = mm_to_px(target_mm[1]. dpi)
         
-    # ---- Step 2: Append decklist entries ----
+    # ---- Step 3: Append decklist entries ----
     with open(out_file_list, 'a', encoding='utf-8') as f:
         f.write(f"\n--- Deck from: {url} ---\n")
         for qty, name in cards:
-            f.write(f"{qty}× {name}\n")
+            # Get image filename for reference
+            safe_name = re.sub(r'[\\/*?:"<>|]', '_', name)
+            filename = f"{next_num:03d}_{safe_name}.png"
+            f.write(f"[{next_num:03d}] {qty}x {name}\n")
+            next_num += 1
             
-    # ---- Step 3: Download images ----
-    width_px = mm_to_px(target_mm[0], dpi)
-    height_px = mm_to_px(target_mm[1], dpi)
-
+    # ---- Step 4: Download images ----
+    # Reset next_num to match numbering in text file
+    next_num = get_next_image_number(out_folder_images)
     for qty, name in cards:
         safe_name = re.sub(r'[\\/*?:"<>|]', '_', name)
-        filename = f"{safe_name}.png"
+        filename = f"{next_num:03d}_{safe_name}.png"
         filepath = os.path.join(out_folder_images, filename)
 
-    # Skip if already downloaded
-    if os.path.exists(filepath):
-        print(f"Skipping {name} (already downloaded)")
-        continue
+        # Skip if already downloaded
+        if os.path.exists(filepath):
+            print(f"Skipping {name} (already downloaded)")
+            next_num += 1
+            continue
         
-    # Attempt to find image tag — may need adjustment
-    img_tag = soup.find('img', alt=name)
-    if img_tag and img_tag.get('src'):
-        img_url = img_tag['src']
-    else:
-        print(f"Warning: Could not locate image for {name}")
-        continue
+        # Attempt to find image tag — may need adjustment
+        img_tag = soup.find('img', alt=name)
+        if img_tag and img_tag.get('src'):
+            img_url = img_tag['src']
+        else:
+            print(f"Warning: Could not locate image for {name}")
+            next_num += 1
+            continue
 
-    # Download and resize image
-    try:
-        img_resp = requests.get(img_url)
-        img_resp.raise_for_status()
-        img = Image.open(BytesIO(img_resp.content)).convert('RGBA')
-        img = img.resize((width_px, height_px), Image.LANCZOS)
-        img.save(filepath)
-        print(f"Saved image: {filepath}")
-    except Exception as e:
-        print(f"Failed to save image for {name}: {e}")
+        # Download and resize image
+        try:
+            img_resp = requests.get(img_url)
+            img_resp.raise_for_status()
+            img = Image.open(BytesIO(img_resp.content)).convert('RGBA')
+            img = img.resize((width_px, height_px), Image.LANCZOS)
+            img.save(filepath)
+            print(f"Saved image: {filepath}")
+        except Exception as e:
+            print(f"Failed to save image for {name}: {e}")
 
+        next_num += 1
+    
     print(f"\nDeck '{url}' processed successfully.\n")
 
 if __name__ == '__main__':
