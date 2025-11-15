@@ -3,9 +3,11 @@ import re
 import sys
 import requests
 from bs4 import BeautifulSoup
-from PIL import Image
+from PIL import Image, ImageOps
 from io import BytesIO
 from playwright.sync_api import sync_playwright
+HEIGHT_BORDER_SIZE = 50
+WIDTH_BORDER_SIZE = 30
 
 def mm_to_px(mm, dpi=300):
     return int(mm / 25.4 * dpi)
@@ -19,7 +21,7 @@ def get_next_image_number(folder):
             existing.append(int(m.group(1)))
     return max(existing) + 1 if existing else 1
 
-def fetch_deck_playwright(url, out_folder_images='images', out_file_list='decklist.txt', target_mm=(215.9,293.69), dpi=300):
+def fetch_deck_playwright(url, out_folder_images='images', out_file_list='decklist.txt', target_mm=(69.09,93.98), dpi=300):
     # Create output folder if not exists
     os.makedirs(out_folder_images, exist_ok=True)
     width_px = mm_to_px(target_mm[0], dpi)
@@ -106,6 +108,7 @@ def fetch_deck_playwright(url, out_folder_images='images', out_file_list='deckli
                 # Resize image
                 img = img.convert('RGBA')
                 img = img.resize((width_px, height_px), Image.LANCZOS)
+                img = ImageOps.expand(img, border=(WIDTH_BORDER_SIZE, HEIGHT_BORDER_SIZE, WIDTH_BORDER_SIZE, HEIGHT_BORDER_SIZE), fill="black")
                 img.save(filepath)
                 print(f"Saved image: {filepath}")
             except Exception as e:
